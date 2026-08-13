@@ -12,7 +12,7 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [faceDetected, setFaceDetected] = useState(false);
-  const detectionInterval = useRef<NodeJS.Timeout | null>(null);
+  const detectionInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Form Data
   const [formData, setFormData] = useState({

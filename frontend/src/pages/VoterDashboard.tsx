@@ -18,7 +18,7 @@ const VoterDashboard = () => {
   const [enrollLoading, setEnrollLoading] = useState(false);
   
   const webcamRef = useRef<Webcam>(null);
-  const detectionInterval = useRef<NodeJS.Timeout | null>(null);
+  const detectionInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchProfile = async () => {
     try {
