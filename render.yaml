@@ -1,0 +1,30 @@
+services:
+  # Node.js Express Backend
+  - type: web
+    name: votesecure-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Set this manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false # Set this manually in Render dashboard
+      - key: FACE_SERVICE_URL
+        value: https://votesecure-face-service.onrender.com
+
+  # Python FastAPI Face Service
+  - type: web
+    name: votesecure-face-service
+    env: python
+    plan: free # Note: DeepFace might require at least the Starter plan (512MB RAM) depending on model size
+    rootDir: face-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0

@@ -1,8 +1,10 @@
 import os
-from fastapi import FastAPI, UploadFile, HTTPException
+import json
+import numpy as np
+from scipy.spatial.distance import cosine
+from fastapi import FastAPI, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-# Note: DeepFace is imported, but we mock the actual ML logic for the skeleton
-# from deepface import DeepFace
+from deepface import DeepFace
 
 app = FastAPI(title="VoteSecure Face Service")
 
@@ -30,20 +32,23 @@ async def enroll(file: UploadFile):
         with open(temp_path, "wb") as f:
             f.write(await file.read())
         
-        # MOCK IMPLEMENTATION: In reality, we'd call DeepFace.represent() here
-        # embedding = DeepFace.represent(img_path=temp_path, model_name="Facenet")[0]["embedding"]
-        mock_embedding = [0.1, 0.2, 0.3, 0.4] # Mock 512-d vector
+        # Call DeepFace to represent the face as a vector embedding
+        # We use Facenet as it is highly accurate and relatively lightweight
+        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=True)
+        embedding = representation[0]["embedding"]
         
         # Clean up
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-        return {"embedding": mock_embedding, "message": "Enrollment successful"}
+        return {"embedding": embedding, "message": "Enrollment successful"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail=f"Failed to detect face or process image: {str(e)}")
 
 @app.post("/verify")
-async def verify(file: UploadFile, stored_embedding: list):
+async def verify(file: UploadFile, stored_embedding: str = Form(...)):
     """
     Takes a live capture + stored embedding, returns match score.
     """
@@ -52,13 +57,23 @@ async def verify(file: UploadFile, stored_embedding: list):
         with open(temp_path, "wb") as f:
             f.write(await file.read())
         
-        # MOCK IMPLEMENTATION: In reality, we'd call DeepFace.verify() here
-        # result = DeepFace.verify(img1_path=temp_path, img2_path=stored_image_or_embedding, model_name="Facenet")
+        # Parse the JSON string array back into a python list
+        reference_embedding = json.loads(stored_embedding)
+        
+        # Extract embedding from live image
+        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=True)
+        live_embedding = representation[0]["embedding"]
+        
+        # Compute cosine distance (Facenet threshold is usually around 0.40 for Cosine)
+        distance = cosine(reference_embedding, live_embedding)
+        verified = bool(distance <= 0.40)
         
         # Clean up
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-        return {"verified": True, "distance": 0.25, "message": "Verification successful"}
+        return {"verified": verified, "distance": float(distance), "message": "Verification completed"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=400, detail=f"Failed to process verification: {str(e)}")

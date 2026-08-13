@@ -13,14 +13,14 @@ const VoterDashboard = () => {
       setElections([
         {
           id: 1,
-          title: 'SRC Presidential Election 2026',
+          title: 'National General Election 2026',
           status: 'active',
           endTime: new Date(Date.now() + 86400000).toISOString(),
           candidates: 4
         },
         {
           id: 2,
-          title: 'Departmental Representatives',
+          title: 'Local Board Representatives',
           status: 'draft',
           endTime: new Date(Date.now() + 172800000).toISOString(),
           candidates: 2

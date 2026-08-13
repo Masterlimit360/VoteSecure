@@ -52,7 +52,7 @@ const AdminDashboard = () => {
       </div>
 
       <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Live Election Results: SRC President</h2>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Live Election Results: Primary Ballot</h2>
         <div className="h-80 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={mockData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
