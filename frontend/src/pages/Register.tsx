@@ -1,8 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus } from 'lucide-react';
 
 const Register = () => {
+  const navigate = useNavigate();
+
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Simulate successful registration and redirect to login
+    navigate('/login');
+  };
+
   return (
     <div className="max-w-md w-full mx-auto space-y-8 p-10 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
       <div className="text-center">
@@ -19,7 +27,7 @@ const Register = () => {
           </Link>
         </p>
       </div>
-      <form className="mt-8 space-y-6" action="#" method="POST">
+      <form className="mt-8 space-y-6" onSubmit={handleRegister}>
         <div className="rounded-md shadow-sm space-y-4">
           <div>
             <label htmlFor="full-name" className="sr-only">Full Name</label>

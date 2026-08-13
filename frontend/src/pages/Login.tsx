@@ -1,8 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Fingerprint } from 'lucide-react';
 
 const Login = () => {
+  const navigate = useNavigate();
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Simulate successful login and redirect to dashboard
+    navigate('/dashboard');
+  };
+
   return (
     <div className="max-w-md w-full mx-auto space-y-8 p-10 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
       <div className="text-center">
@@ -19,7 +27,7 @@ const Login = () => {
           </Link>
         </p>
       </div>
-      <form className="mt-8 space-y-6" action="#" method="POST">
+      <form className="mt-8 space-y-6" onSubmit={handleLogin}>
         <div className="rounded-md shadow-sm space-y-4">
           <div>
             <label htmlFor="index-number" className="sr-only">Index Number / ID</label>
