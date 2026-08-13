@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import VoterDashboard from './pages/VoterDashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminRegister from './pages/AdminRegister';
 import VotingFlow from './pages/VotingFlow';
 
 function App() {
@@ -51,6 +52,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/dashboard" element={<VoterDashboard />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/register" element={<AdminRegister />} />
             <Route path="/vote/:id" element={<VotingFlow />} />
           </Routes>
         </main>

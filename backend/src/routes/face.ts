@@ -24,11 +24,19 @@ router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequ
       headers: { ...formData.getHeaders() }
     });
 
-    // Save embedding to voter profile
+    // Save embedding and photo to voter profile
     if (req.user?.role === 'voter') {
+      const base64Image = req.file.buffer.toString('base64');
+      const mimeType = req.file.mimetype;
+      const faceImageBase64 = `data:${mimeType};base64,${base64Image}`;
+
       await prisma.voter.update({
         where: { id: req.user.id },
-        data: { faceEmbedding: faceResponse.data.embedding, isVerified: true }
+        data: { 
+          faceEmbedding: faceResponse.data.embedding, 
+          faceImageBase64: faceImageBase64,
+          isVerified: true 
+        }
       });
     }
 

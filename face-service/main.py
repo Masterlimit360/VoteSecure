@@ -34,7 +34,8 @@ async def enroll(file: UploadFile):
         
         # Call DeepFace to represent the face as a vector embedding
         # We use Facenet as it is highly accurate and relatively lightweight
-        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=True)
+        # using MTCNN as the detector backend because it's much better in low-light and tricky angles
+        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", detector_backend="mtcnn", enforce_detection=True)
         embedding = representation[0]["embedding"]
         
         # Clean up
@@ -60,8 +61,8 @@ async def verify(file: UploadFile, stored_embedding: str = Form(...)):
         # Parse the JSON string array back into a python list
         reference_embedding = json.loads(stored_embedding)
         
-        # Extract embedding from live image
-        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", enforce_detection=True)
+        # Extract embedding from live image using MTCNN
+        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", detector_backend="mtcnn", enforce_detection=True)
         live_embedding = representation[0]["embedding"]
         
         # Compute cosine distance (Facenet threshold is usually around 0.40 for Cosine)

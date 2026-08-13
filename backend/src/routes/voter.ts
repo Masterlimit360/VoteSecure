@@ -24,6 +24,28 @@ router.get('/elections', async (req, res) => {
   }
 });
 
+// Get Voter Profile
+router.get('/me', async (req: AuthRequest, res) => {
+  try {
+    const voter = await prisma.voter.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        fullName: true,
+        indexNumber: true,
+        email: true,
+        dob: true,
+        isVerified: true,
+        faceImageBase64: true,
+        createdAt: true
+      }
+    });
+    res.json(voter);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
 // Cast a vote
 router.post('/votes', async (req: AuthRequest, res) => {
   try {

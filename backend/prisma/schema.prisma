@@ -14,6 +14,7 @@ model Voter {
   dob             String?
   passwordHash    String
   faceEmbedding   Json?
+  faceImageBase64 String?   @db.Text
   isVerified      Boolean   @default(false)
   createdAt       DateTime  @default(now())
   votes           Vote[]

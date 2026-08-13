@@ -74,4 +74,39 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Admin Registration (Secret route for setup)
+router.post('/admin/register', async (req, res) => {
+  try {
+    const { full_name, email, password } = req.body;
+
+    const existingAdmin = await prisma.admin.findUnique({
+      where: { email }
+    });
+    if (existingAdmin) {
+      return res.status(400).json({ error: 'Admin already exists' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const admin = await prisma.admin.create({
+      data: {
+        fullName: full_name,
+        email,
+        passwordHash
+      }
+    });
+
+    const token = jwt.sign(
+      { id: admin.id, role: 'admin', email: admin.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({ message: 'Admin created', token, adminId: admin.id });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error during admin registration' });
+  }
+});
+
 export default router;
