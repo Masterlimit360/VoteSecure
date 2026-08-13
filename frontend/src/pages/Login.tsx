@@ -1,14 +1,39 @@
-import React from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Fingerprint } from 'lucide-react';
+import api from '../api';
 
 const Login = () => {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ index_number: '', password: '' });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate successful login and redirect to dashboard
-    navigate('/dashboard');
+    setLoading(true);
+    setError('');
+    
+    try {
+      const res = await api.post('/auth/login', formData);
+      localStorage.setItem('votesecure_token', res.data.token);
+      
+      // Determine dashboard based on role (for MVP, we assume voters go to dashboard, admins to admin)
+      // We can decode JWT or use the response role, but for now we route simply:
+      if (formData.index_number.startsWith('ADMIN')) {
+         navigate('/admin');
+      } else {
+         navigate('/dashboard');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Invalid credentials');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -27,6 +52,9 @@ const Login = () => {
           </Link>
         </p>
       </div>
+
+      {error && <div className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">{error}</div>}
+
       <form className="mt-8 space-y-6" onSubmit={handleLogin}>
         <div className="rounded-md shadow-sm space-y-4">
           <div>
@@ -36,8 +64,9 @@ const Login = () => {
               name="index_number"
               type="text"
               required
+              onChange={handleInputChange}
               className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-colors"
-              placeholder="Index Number / ID"
+              placeholder="Index Number / ID (Use ADMIN- prefix for admin)"
             />
           </div>
           <div>
@@ -47,38 +76,20 @@ const Login = () => {
               name="password"
               type="password"
               required
+              onChange={handleInputChange}
               className="appearance-none rounded-xl relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white dark:bg-gray-800 focus:outline-none focus:ring-primary-500 focus:border-primary-500 focus:z-10 sm:text-sm transition-colors"
               placeholder="Password"
             />
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <input
-              id="remember-me"
-              name="remember-me"
-              type="checkbox"
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-            />
-            <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-              Remember me
-            </label>
-          </div>
-
-          <div className="text-sm">
-            <a href="#" className="font-medium text-primary-600 hover:text-primary-500 transition-colors">
-              Forgot your password?
-            </a>
-          </div>
-        </div>
-
         <div>
           <button
             type="submit"
-            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+            disabled={loading}
+            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors disabled:opacity-50"
           >
-            Sign in
+            {loading ? 'Authenticating...' : 'Sign in'}
           </button>
         </div>
       </form>

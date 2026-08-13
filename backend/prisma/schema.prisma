@@ -11,6 +11,7 @@ model Voter {
   fullName        String
   indexNumber     String    @unique
   email           String    @unique
+  dob             String?
   passwordHash    String
   faceEmbedding   Json?
   isVerified      Boolean   @default(false)

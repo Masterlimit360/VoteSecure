@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
 // Register voter
 router.post('/register', async (req, res) => {
   try {
-    const { full_name, index_number, email, password } = req.body;
+    const { full_name, index_number, email, password, dob } = req.body;
 
     const existingVoter = await prisma.voter.findFirst({
       where: {
@@ -23,16 +23,23 @@ router.post('/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const newVoter = await prisma.voter.create({
+    const voter = await prisma.voter.create({
       data: {
         fullName: full_name,
         indexNumber: index_number,
         email,
-        passwordHash,
+        dob,
+        passwordHash
       }
     });
 
-    res.status(201).json({ message: 'Voter registered successfully. Proceed to face enrollment.', voterId: newVoter.id });
+    const token = jwt.sign(
+      { id: voter.id, role: 'voter', indexNumber: voter.indexNumber },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({ message: 'Voter registered successfully.', token, voterId: voter.id });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error during registration' });

@@ -1,7 +1,8 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import { ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import api from '../api';
 
 const VotingFlow = () => {
   const { id } = useParams();
@@ -12,10 +13,27 @@ const VotingFlow = () => {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   
-  const [candidates] = useState([
-    { id: 101, name: 'Candidate A', bio: 'Experienced leader.' },
-    { id: 102, name: 'Candidate B', bio: 'Fresh perspectives.' }
-  ]);
+  // Real candidates fetched from DB
+  const [candidates, setCandidates] = useState<any[]>([]);
+
+  useEffect(() => {
+    // We fetch the active elections and filter to the current ID to get its candidates.
+    // In a real app we'd have a specific GET /elections/:id endpoint, but we can reuse the active elections list here.
+    const loadCandidates = async () => {
+      try {
+        const res = await api.get('/voters/elections');
+        const election = res.data.find((e: any) => e.id === parseInt(id || '0'));
+        if (election) {
+          setCandidates(election.candidates || []);
+        } else {
+          setError('Election not found or no longer active.');
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    loadCandidates();
+  }, [id]);
 
   const captureAndVerify = useCallback(async () => {
     const imageSrc = webcamRef.current?.getScreenshot();
@@ -25,16 +43,24 @@ const VotingFlow = () => {
     setError('');
 
     try {
-      // In a real implementation we would convert the base64 imageSrc to a blob 
-      // and send it to our `/api/face/verify` proxy.
+      const resImg = await fetch(imageSrc);
+      const blob = await resImg.blob();
       
-      // Mocking the verification delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Success! Move to voting step
-      setStep(2);
-    } catch (err) {
-      setError('Facial verification failed. Please ensure good lighting and try again.');
+      const formData = new FormData();
+      formData.append('image', blob, 'verify.jpg');
+
+      // Call the Face Service proxy to verify identity against enrolled face
+      const response = await api.post('/face/verify', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.verified) {
+        setStep(2);
+      } else {
+        setError('Face verification failed. Please try again.');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Facial verification failed. Please ensure good lighting and try again.');
     } finally {
       setVerifying(false);
     }
@@ -42,12 +68,13 @@ const VotingFlow = () => {
 
   const castVote = async (candidateId: number) => {
     try {
-      // API call to /api/votes would go here, utilizing candidateId and election id
-      console.log(`Casting vote for candidate ${candidateId} in election ${id}`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await api.post('/voters/votes', {
+        electionId: parseInt(id || '0'),
+        candidateId
+      });
       setStep(3);
-    } catch (err) {
-      setError('Failed to cast vote.');
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to cast vote.');
     }
   };
 
@@ -80,7 +107,7 @@ const VotingFlow = () => {
             disabled={verifying}
             className="mt-8 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-xl font-bold text-lg w-full max-w-md transition-colors disabled:opacity-50"
           >
-            {verifying ? 'Scanning face...' : 'Verify & Continue'}
+            {verifying ? 'Scanning face against ML Model...' : 'Verify & Continue'}
           </button>
         </div>
       )}
@@ -91,15 +118,19 @@ const VotingFlow = () => {
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Official Ballot</h2>
               <p className="text-primary-600 dark:text-primary-400 font-medium flex items-center mt-1">
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Identity Verified
+                <CheckCircle2 className="h-4 w-4 mr-1" /> Identity Cryptographically Verified
               </p>
             </div>
           </div>
 
+          {error && <div className="p-4 bg-red-50 text-red-600 rounded-xl">{error}</div>}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {candidates.map(candidate => (
               <div key={candidate.id} className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:border-primary-500 hover:shadow-md transition-all flex flex-col items-center text-center">
-                <div className="h-24 w-24 bg-gray-200 dark:bg-gray-800 rounded-full mb-4"></div>
+                <div className="h-24 w-24 bg-primary-100 text-primary-600 dark:bg-gray-800 flex items-center justify-center rounded-full mb-4 font-bold text-2xl">
+                  {candidate.name.charAt(0)}
+                </div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">{candidate.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 mb-6">{candidate.bio}</p>
                 <button
@@ -110,6 +141,7 @@ const VotingFlow = () => {
                 </button>
               </div>
             ))}
+            {candidates.length === 0 && <p className="text-gray-500 col-span-2 text-center py-10">No candidates available for this election yet.</p>}
           </div>
         </div>
       )}
