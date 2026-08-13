@@ -10,6 +10,26 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8000';
 
+// Proxy face detection (fast check)
+router.post('/detect', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image provided' });
+    }
+
+    const formData = new FormData();
+    formData.append('file', req.file.buffer, req.file.originalname);
+
+    const faceResponse = await axios.post(`${FACE_SERVICE_URL}/detect`, formData, {
+      headers: { ...formData.getHeaders() }
+    });
+
+    res.json(faceResponse.data);
+  } catch (error) {
+    res.status(500).json({ detected: false, error: 'Failed to communicate with Face Service' });
+  }
+});
+
 // Proxy enrollment to Face Service
 router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequest, res) => {
   try {

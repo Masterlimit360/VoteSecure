@@ -22,6 +22,29 @@ os.makedirs("temp", exist_ok=True)
 async def health_check():
     return {"status": "ok", "service": "face-service"}
 
+@app.post("/detect")
+async def detect(file: UploadFile):
+    """
+    Quickly checks if a face exists in the image.
+    Used for real-time auto-capture feedback.
+    """
+    try:
+        temp_path = f"temp/{file.filename}"
+        with open(temp_path, "wb") as f:
+            f.write(await file.read())
+        
+        # We use MTCNN to check if a face exists
+        faces = DeepFace.extract_faces(img_path=temp_path, detector_backend="mtcnn", enforce_detection=True)
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        return {"detected": True, "faces_count": len(faces)}
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        return {"detected": False, "error": str(e)}
+
 @app.post("/enroll")
 async def enroll(file: UploadFile):
     """

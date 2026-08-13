@@ -11,6 +11,8 @@ const Register = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [faceDetected, setFaceDetected] = useState(false);
+  const detectionInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -35,6 +37,7 @@ const Register = () => {
       // Save token securely for the face enrollment step
       localStorage.setItem('votesecure_token', res.data.token);
       setStep(2);
+      startFaceDetection();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to register account');
     } finally {
@@ -67,6 +70,7 @@ const Register = () => {
       });
       
       // Successfully enrolled face, redirect to dashboard
+      if (detectionInterval.current) clearInterval(detectionInterval.current);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Face enrollment failed. Please ensure good lighting and try again.');
@@ -74,6 +78,48 @@ const Register = () => {
       setLoading(false);
     }
   }, [webcamRef, navigate]);
+
+  const startFaceDetection = useCallback(() => {
+    if (detectionInterval.current) clearInterval(detectionInterval.current);
+    
+    detectionInterval.current = setInterval(async () => {
+      if (!webcamRef.current) return;
+      
+      const imageSrc = webcamRef.current.getScreenshot();
+      if (!imageSrc) return;
+
+      try {
+        const res = await fetch(imageSrc);
+        const blob = await res.blob();
+        
+        const fd = new FormData();
+        fd.append('image', blob, 'detect.jpg');
+
+        const detectRes = await api.post('/face/detect', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        if (detectRes.data.detected) {
+          setFaceDetected(true);
+          if (detectionInterval.current) clearInterval(detectionInterval.current);
+          
+          // Auto-capture after 1 second of detection
+          setTimeout(() => {
+            captureAndEnrollFace();
+          }, 1000);
+        }
+      } catch (err) {
+        // Silently ignore detection errors to not interrupt the flow
+      }
+    }, 1500); // Poll every 1.5s
+  }, [webcamRef, captureAndEnrollFace]);
+
+  // Clean up interval on unmount
+  useCallback(() => {
+    return () => {
+      if (detectionInterval.current) clearInterval(detectionInterval.current);
+    };
+  }, []);
 
   return (
     <div className="max-w-md w-full mx-auto space-y-8 p-10 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
@@ -94,11 +140,11 @@ const Register = () => {
 
           <form className="mt-8 space-y-6" onSubmit={submitDetails}>
             <div className="space-y-4">
-              <input name="full_name" type="text" required placeholder="Full Name" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
-              <input name="index_number" type="text" required placeholder="ID / Index Number" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
-              <input name="email" type="email" required placeholder="Email Address" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
-              <input name="dob" type="date" required placeholder="Date of Birth" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
-              <input name="password" type="password" required placeholder="Password" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
+              <input name="full_name" type="text" required placeholder="Full Name" autoComplete="name" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
+              <input name="index_number" type="text" required placeholder="ID / Index Number" autoComplete="off" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
+              <input name="email" type="email" required placeholder="Email Address" autoComplete="email" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
+              <input name="dob" type="date" required placeholder="Date of Birth" autoComplete="bday" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
+              <input name="password" type="password" required placeholder="Password" autoComplete="new-password" onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500" />
             </div>
             <button type="submit" disabled={loading} className="w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl disabled:opacity-50 transition-colors">
               {loading ? 'Creating Account...' : 'Continue to Face Scan'}
@@ -111,9 +157,9 @@ const Register = () => {
         <div className="text-center">
           <ShieldCheck className="h-16 w-16 text-primary-500 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Secure Face Enrollment</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-8">Look directly at the camera. This scan will be encrypted and used to verify your identity when voting.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-8">Look directly at the camera. We will automatically capture your face when detected.</p>
           
-          <div className="relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center">
+          <div className={`relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center transition-all duration-300 border-4 ${faceDetected ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
             <Webcam
               audio={false}
               ref={webcamRef}
@@ -132,9 +178,9 @@ const Register = () => {
           <button
             onClick={captureAndEnrollFace}
             disabled={loading}
-            className="mt-8 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors disabled:opacity-50"
+            className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors disabled:opacity-50 ${faceDetected ? 'bg-green-600 hover:bg-green-700' : 'bg-primary-600 hover:bg-primary-700'}`}
           >
-            {loading ? 'Processing ML Matrix...' : 'Scan & Save Identity'}
+            {loading ? 'Processing ML Matrix...' : faceDetected ? 'Auto-Capturing...' : 'Scan & Save Identity'}
           </button>
         </div>
       )}
