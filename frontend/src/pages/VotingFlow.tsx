@@ -1,8 +1,7 @@
-import React, { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import { ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
-import axios from 'axios';
 
 const VotingFlow = () => {
   const { id } = useParams();
@@ -43,7 +42,8 @@ const VotingFlow = () => {
 
   const castVote = async (candidateId: number) => {
     try {
-      // API call to /api/votes would go here
+      // API call to /api/votes would go here, utilizing candidateId and election id
+      console.log(`Casting vote for candidate ${candidateId} in election ${id}`);
       await new Promise(resolve => setTimeout(resolve, 1000));
       setStep(3);
     } catch (err) {

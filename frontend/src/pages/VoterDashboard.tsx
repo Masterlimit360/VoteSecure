@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, CheckCircle, ChevronRight, User } from 'lucide-react';
-import axios from 'axios';
+import { Calendar, ChevronRight, User } from 'lucide-react';
 
 const VoterDashboard = () => {
-  const [elections, setElections] = useState([]);
+  const [elections, setElections] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Mocking data fetch for now
