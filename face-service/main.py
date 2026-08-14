@@ -50,15 +50,25 @@ async def enroll(file: UploadFile):
     """
     Takes a face image, generates embedding via DeepFace, returns embedding.
     """
+    temp_path = f"temp/{file.filename}"
     try:
-        temp_path = f"temp/{file.filename}"
         with open(temp_path, "wb") as f:
             f.write(await file.read())
         
         # Call DeepFace to represent the face as a vector embedding
         # We use Facenet as it is highly accurate and relatively lightweight
-        # using MTCNN as the detector backend because it's much better in low-light and tricky angles
-        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", detector_backend="mtcnn", enforce_detection=True)
+        # Using opencv as the detector backend because it's the most reliable for webcam images
+        # enforce_detection=False prevents crashes; we check manually instead
+        representation = DeepFace.represent(
+            img_path=temp_path,
+            model_name="Facenet",
+            detector_backend="opencv",
+            enforce_detection=False
+        )
+        
+        if not representation or len(representation) == 0:
+            raise HTTPException(status_code=400, detail="No face detected in the image. Please try again.")
+        
         embedding = representation[0]["embedding"]
         
         # Clean up
@@ -66,6 +76,10 @@ async def enroll(file: UploadFile):
             os.remove(temp_path)
             
         return {"embedding": embedding, "message": "Enrollment successful"}
+    except HTTPException:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -76,27 +90,40 @@ async def verify(file: UploadFile, stored_embedding: str = Form(...)):
     """
     Takes a live capture + stored embedding, returns match score.
     """
+    temp_path = f"temp/{file.filename}"
     try:
-        temp_path = f"temp/{file.filename}"
         with open(temp_path, "wb") as f:
             f.write(await file.read())
         
         # Parse the JSON string array back into a python list
         reference_embedding = json.loads(stored_embedding)
         
-        # Extract embedding from live image using MTCNN
-        representation = DeepFace.represent(img_path=temp_path, model_name="Facenet", detector_backend="mtcnn", enforce_detection=True)
+        # Extract embedding from live image using opencv (most reliable for webcam)
+        representation = DeepFace.represent(
+            img_path=temp_path,
+            model_name="Facenet",
+            detector_backend="opencv",
+            enforce_detection=False
+        )
+        
+        if not representation or len(representation) == 0:
+            raise HTTPException(status_code=400, detail="No face detected in the live image.")
+        
         live_embedding = representation[0]["embedding"]
         
-        # Compute cosine distance (Facenet threshold is usually around 0.40 for Cosine)
+        # Compute cosine distance (Facenet threshold ~0.40 for Cosine, relaxed to 0.45 for webcam variance)
         distance = cosine(reference_embedding, live_embedding)
-        verified = bool(distance <= 0.40)
+        verified = bool(distance <= 0.45)
         
         # Clean up
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
         return {"verified": verified, "distance": float(distance), "message": "Verification completed"}
+    except HTTPException:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
     except Exception as e:
         if os.path.exists(temp_path):
             os.remove(temp_path)

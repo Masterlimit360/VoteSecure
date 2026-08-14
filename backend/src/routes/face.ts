@@ -61,9 +61,13 @@ router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequ
     }
 
     res.json({ message: 'Enrollment successful', embedding: faceResponse.data.embedding });
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to communicate with Face Service' });
+    if (error.response && error.response.data && error.response.data.detail) {
+      res.status(400).json({ detail: error.response.data.detail });
+    } else {
+      res.status(500).json({ error: 'Failed to communicate with Face Service' });
+    }
   }
 });
 
@@ -102,9 +106,13 @@ router.post('/verify', verifyToken, upload.single('image'), async (req: AuthRequ
     } else {
       res.status(401).json({ verified: false, error: 'Face verification failed' });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to communicate with Face Service' });
+    if (error.response && error.response.data && error.response.data.detail) {
+      res.status(400).json({ error: error.response.data.detail });
+    } else {
+      res.status(500).json({ error: 'Failed to communicate with Face Service' });
+    }
   }
 });
 
