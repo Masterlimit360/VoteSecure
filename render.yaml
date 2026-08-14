@@ -20,11 +20,9 @@ services:
   # Python FastAPI Face Service
   - type: web
     name: votesecure-face-service
-    env: python
+    env: docker
     plan: free # Note: DeepFace might require at least the Starter plan (512MB RAM) depending on model size
     rootDir: face-service
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0

@@ -5,5 +5,5 @@ deepface
 opencv-python-headless
 numpy
 scipy
-tf-keras
+tensorflow-cpu
 mtcnn

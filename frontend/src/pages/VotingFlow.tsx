@@ -136,8 +136,12 @@ const VotingFlow = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {candidates.map(candidate => (
               <div key={candidate.id} className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm hover:border-primary-500 hover:shadow-md transition-all flex flex-col items-center text-center">
-                <div className="h-24 w-24 bg-primary-100 text-primary-600 dark:bg-gray-800 flex items-center justify-center rounded-full mb-4 font-bold text-2xl">
-                  {candidate.name.charAt(0)}
+                <div className="h-24 w-24 bg-primary-100 text-primary-600 dark:bg-gray-800 flex items-center justify-center rounded-full mb-4 font-bold text-2xl overflow-hidden shadow-sm">
+                  {candidate.photoUrl ? (
+                    <img src={candidate.photoUrl} alt={candidate.name} className="w-full h-full object-cover" />
+                  ) : (
+                    candidate.name.charAt(0)
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">{candidate.name}</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 mb-6">{candidate.bio}</p>

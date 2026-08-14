@@ -13,7 +13,7 @@ const AdminDashboard = () => {
   const [newElection, setNewElection] = useState({ title: '', start_time: '', end_time: '' });
 
   const [showCandidateForm, setShowCandidateForm] = useState(false);
-  const [newCandidate, setNewCandidate] = useState({ name: '', bio: '' });
+  const [newCandidate, setNewCandidate] = useState({ name: '', bio: '', photoUrl: '' });
 
   const fetchElections = async () => {
     try {
@@ -118,6 +118,10 @@ const AdminDashboard = () => {
             <div className="flex-1">
               <label className="block text-sm mb-1 dark:text-gray-300">Bio</label>
               <input type="text" onChange={(e) => setNewCandidate({...newCandidate, bio: e.target.value})} className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:border-gray-700 text-gray-900 dark:text-white" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm mb-1 dark:text-gray-300">Image URL</label>
+              <input type="text" onChange={(e) => setNewCandidate({...newCandidate, photoUrl: e.target.value})} placeholder="https://..." className="w-full p-2 border rounded-xl dark:bg-gray-800 dark:border-gray-700 text-gray-900 dark:text-white" />
             </div>
             <button type="submit" className="bg-primary-600 text-white px-4 py-2 rounded-xl">Add</button>
             <button type="button" onClick={() => setShowCandidateForm(false)} className="bg-gray-300 px-4 py-2 rounded-xl">Cancel</button>
