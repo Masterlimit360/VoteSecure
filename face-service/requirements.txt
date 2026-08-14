@@ -6,4 +6,5 @@ opencv-python-headless
 numpy
 scipy
 tensorflow-cpu
+tf-keras
 mtcnn
