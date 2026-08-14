@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10
 
 # Install system dependencies required by OpenCV and DeepFace
 RUN apt-get update && apt-get install -y \
@@ -23,4 +23,4 @@ ENV PORT=8000
 EXPOSE 8000
 
 # Start the application
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+CMD python -m uvicorn main:app --host 0.0.0.0 --port $PORT
