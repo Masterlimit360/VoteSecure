@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import { ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
 import api from '../api';
+import { useFaceScanner } from '../hooks/useFaceScanner';
 
 const VotingFlow = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const webcamRef = useRef<Webcam>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const [step, setStep] = useState(1); // 1: Verify Face, 2: Vote, 3: Success
   const [verifying, setVerifying] = useState(false);
@@ -35,8 +37,7 @@ const VotingFlow = () => {
     loadCandidates();
   }, [id]);
 
-  const captureAndVerify = useCallback(async () => {
-    const imageSrc = webcamRef.current?.getScreenshot();
+  const captureAndVerify = useCallback(async (imageSrc: string) => {
     if (!imageSrc) return;
 
     setVerifying(true);
@@ -66,6 +67,8 @@ const VotingFlow = () => {
     }
   }, [webcamRef]);
 
+  const { feedback, isValid } = useFaceScanner(webcamRef, canvasRef, captureAndVerify);
+
   const castVote = async (candidateId: number) => {
     try {
       await api.post('/voters/votes', {
@@ -84,15 +87,21 @@ const VotingFlow = () => {
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-800 text-center">
           <ShieldCheck className="h-16 w-16 text-primary-500 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Verify Your Identity</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-8">Please look directly at the camera to verify your identity before accessing the ballot.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-4">Please look directly at the camera to verify your identity before accessing the ballot.</p>
           
-          <div className="relative max-w-md mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-video flex items-center justify-center">
+          <div className="mb-4 inline-block bg-gray-100 dark:bg-gray-800 px-6 py-2 rounded-full font-bold text-primary-600 dark:text-primary-400 shadow-inner">
+            {feedback}
+          </div>
+
+          <div className={`relative max-w-md mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-video flex items-center justify-center transition-all duration-300 border-4 ${isValid ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
             <Webcam
               audio={false}
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               className="w-full h-full object-cover"
+              mirrored={true}
             />
+            <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover pointer-events-none" />
           </div>
 
           {error && (
@@ -103,11 +112,10 @@ const VotingFlow = () => {
           )}
 
           <button
-            onClick={captureAndVerify}
-            disabled={verifying}
-            className="mt-8 bg-primary-600 hover:bg-primary-700 text-white px-8 py-4 rounded-xl font-bold text-lg w-full max-w-md transition-colors disabled:opacity-50"
+            disabled={true}
+            className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full max-w-md transition-colors opacity-50 bg-primary-600`}
           >
-            {verifying ? 'Scanning face against ML Model...' : 'Verify & Continue'}
+            {verifying ? 'Scanning face against ML Model...' : isValid ? 'Auto-Capturing...' : 'Verify & Continue'}
           </button>
         </div>
       )}

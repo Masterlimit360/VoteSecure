@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus, ShieldCheck, AlertCircle } from 'lucide-react';
 import Webcam from 'react-webcam';
 import api from '../api';
+import { useFaceScanner } from '../hooks/useFaceScanner';
 
 const Register = () => {
   const navigate = useNavigate();
@@ -11,8 +12,8 @@ const Register = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [faceDetected, setFaceDetected] = useState(false);
-  const detectionInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -37,7 +38,6 @@ const Register = () => {
       // Save token securely for the face enrollment step
       localStorage.setItem('votesecure_token', res.data.token);
       setStep(2);
-      startFaceDetection();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to register account');
     } finally {
@@ -45,8 +45,7 @@ const Register = () => {
     }
   };
 
-  const captureAndEnrollFace = useCallback(async () => {
-    const imageSrc = webcamRef.current?.getScreenshot();
+  const captureAndEnrollFace = useCallback(async (imageSrc: string) => {
     if (!imageSrc) {
       setError("Could not capture webcam image.");
       return;
@@ -70,7 +69,6 @@ const Register = () => {
       });
       
       // Successfully enrolled face, redirect to dashboard
-      if (detectionInterval.current) clearInterval(detectionInterval.current);
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Face enrollment failed. Please ensure good lighting and try again.');
@@ -79,47 +77,7 @@ const Register = () => {
     }
   }, [webcamRef, navigate]);
 
-  const startFaceDetection = useCallback(() => {
-    if (detectionInterval.current) clearInterval(detectionInterval.current);
-    
-    detectionInterval.current = setInterval(async () => {
-      if (!webcamRef.current) return;
-      
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (!imageSrc) return;
-
-      try {
-        const res = await fetch(imageSrc);
-        const blob = await res.blob();
-        
-        const fd = new FormData();
-        fd.append('image', blob, 'detect.jpg');
-
-        const detectRes = await api.post('/face/detect', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        if (detectRes.data.detected) {
-          setFaceDetected(true);
-          if (detectionInterval.current) clearInterval(detectionInterval.current);
-          
-          // Auto-capture after 1 second of detection
-          setTimeout(() => {
-            captureAndEnrollFace();
-          }, 1000);
-        }
-      } catch (err) {
-        // Silently ignore detection errors to not interrupt the flow
-      }
-    }, 1500); // Poll every 1.5s
-  }, [webcamRef, captureAndEnrollFace]);
-
-  // Clean up interval on unmount
-  useCallback(() => {
-    return () => {
-      if (detectionInterval.current) clearInterval(detectionInterval.current);
-    };
-  }, []);
+  const { feedback, isValid } = useFaceScanner(webcamRef, canvasRef, captureAndEnrollFace);
 
   return (
     <div className="max-w-md w-full mx-auto space-y-8 p-10 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
@@ -157,15 +115,21 @@ const Register = () => {
         <div className="text-center">
           <ShieldCheck className="h-16 w-16 text-primary-500 mx-auto mb-6" />
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Secure Face Enrollment</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-8">Look directly at the camera. We will automatically capture your face when detected.</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-4">Look directly at the camera. We will automatically capture your face when detected.</p>
           
-          <div className={`relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center transition-all duration-300 border-4 ${faceDetected ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
+          <div className="mb-4 inline-block bg-gray-100 dark:bg-gray-800 px-6 py-2 rounded-full font-bold text-primary-600 dark:text-primary-400 shadow-inner">
+            {feedback}
+          </div>
+
+          <div className={`relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center transition-all duration-300 border-4 ${isValid ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
             <Webcam
               audio={false}
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               className="w-full h-full object-cover"
+              mirrored={true}
             />
+            <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover pointer-events-none" />
           </div>
 
           {error && (
@@ -176,11 +140,10 @@ const Register = () => {
           )}
 
           <button
-            onClick={captureAndEnrollFace}
-            disabled={loading}
-            className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors disabled:opacity-50 ${faceDetected ? 'bg-green-600 hover:bg-green-700' : 'bg-primary-600 hover:bg-primary-700'}`}
+            disabled={true}
+            className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors opacity-50 bg-primary-600`}
           >
-            {loading ? 'Processing ML Matrix...' : faceDetected ? 'Auto-Capturing...' : 'Scan & Save Identity'}
+            {loading ? 'Processing ML Matrix...' : isValid ? 'Auto-Capturing...' : 'Scan & Save Identity'}
           </button>
         </div>
       )}

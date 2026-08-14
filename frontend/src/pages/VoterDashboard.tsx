@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Calendar, ChevronRight, User, IdCard, CheckCircle2, ShieldCheck, Mail, Camera, AlertCircle } from 'lucide-react';
 import Webcam from 'react-webcam';
 import api from '../api';
+import { useFaceScanner } from '../hooks/useFaceScanner';
 
 const VoterDashboard = () => {
   const [elections, setElections] = useState<any[]>([]);
@@ -13,12 +14,11 @@ const VoterDashboard = () => {
   
   // Face Enrollment State
   const [enrollmentMode, setEnrollmentMode] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
   const [enrollError, setEnrollError] = useState('');
   const [enrollLoading, setEnrollLoading] = useState(false);
   
   const webcamRef = useRef<Webcam>(null);
-  const detectionInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const fetchProfile = async () => {
     try {
@@ -43,8 +43,7 @@ const VoterDashboard = () => {
     fetchProfile();
   }, []);
 
-  const captureAndEnrollFace = useCallback(async () => {
-    const imageSrc = webcamRef.current?.getScreenshot();
+  const captureAndEnrollFace = useCallback(async (imageSrc: string) => {
     if (!imageSrc) {
       setEnrollError("Could not capture webcam image.");
       return;
@@ -64,7 +63,6 @@ const VoterDashboard = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
-      if (detectionInterval.current) clearInterval(detectionInterval.current);
       setEnrollmentMode(false);
       await fetchProfile(); // Refresh profile
     } catch (err: any) {
@@ -74,41 +72,7 @@ const VoterDashboard = () => {
     }
   }, [webcamRef]);
 
-  const startFaceDetection = useCallback(() => {
-    if (detectionInterval.current) clearInterval(detectionInterval.current);
-    
-    detectionInterval.current = setInterval(async () => {
-      if (!webcamRef.current) return;
-      const imageSrc = webcamRef.current.getScreenshot();
-      if (!imageSrc) return;
-
-      try {
-        const res = await fetch(imageSrc);
-        const blob = await res.blob();
-        const fd = new FormData();
-        fd.append('image', blob, 'detect.jpg');
-
-        const detectRes = await api.post('/face/detect', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        if (detectRes.data.detected) {
-          setFaceDetected(true);
-          if (detectionInterval.current) clearInterval(detectionInterval.current);
-          setTimeout(() => captureAndEnrollFace(), 1000);
-        }
-      } catch (err) {}
-    }, 1500);
-  }, [webcamRef, captureAndEnrollFace]);
-
-  useEffect(() => {
-    if (enrollmentMode) {
-      startFaceDetection();
-    }
-    return () => {
-      if (detectionInterval.current) clearInterval(detectionInterval.current);
-    };
-  }, [enrollmentMode, startFaceDetection]);
+  const { feedback, isValid } = useFaceScanner(webcamRef, canvasRef, captureAndEnrollFace);
 
   if (enrollmentMode) {
     return (
@@ -120,13 +84,19 @@ const VoterDashboard = () => {
           <br/>Look directly at the camera.
         </p>
         
-        <div className={`relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center transition-all duration-300 border-4 ${faceDetected ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
+        <div className="mb-4 inline-block bg-gray-100 dark:bg-gray-800 px-6 py-2 rounded-full font-bold text-primary-600 dark:text-primary-400 shadow-inner">
+          {feedback}
+        </div>
+        
+        <div className={`relative max-w-sm mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-square flex items-center justify-center transition-all duration-300 border-4 ${isValid ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
           <Webcam
             audio={false}
             ref={webcamRef}
             screenshotFormat="image/jpeg"
             className="w-full h-full object-cover"
+            mirrored={true}
           />
+          <canvas ref={canvasRef} className="absolute top-0 left-0 w-full h-full object-cover pointer-events-none" />
         </div>
 
         {enrollError && (
@@ -137,11 +107,10 @@ const VoterDashboard = () => {
         )}
 
         <button
-          onClick={captureAndEnrollFace}
-          disabled={enrollLoading}
-          className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors disabled:opacity-50 ${faceDetected ? 'bg-green-600 hover:bg-green-700' : 'bg-primary-600 hover:bg-primary-700'}`}
+          disabled={true}
+          className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full transition-colors opacity-50 bg-primary-600`}
         >
-          {enrollLoading ? 'Processing ML Matrix...' : faceDetected ? 'Auto-Capturing...' : 'Scan & Save Identity'}
+          {enrollLoading ? 'Processing ML Matrix...' : isValid ? 'Auto-Capturing...' : 'Scan & Save Identity'}
         </button>
         
         {profile?.isVerified && (
@@ -246,7 +215,7 @@ const VoterDashboard = () => {
               </div>
 
               <button 
-                onClick={() => { setFaceDetected(false); setEnrollmentMode(true); }}
+                onClick={() => { setEnrollmentMode(true); }}
                 className="mt-6 w-full py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-white border border-gray-200 dark:border-gray-700 rounded-xl font-bold transition-colors flex justify-center items-center gap-2"
               >
                 <Camera className="w-4 h-4" /> Re-Enroll Identity
