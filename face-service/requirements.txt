@@ -2,7 +2,7 @@ fastapi
 uvicorn
 python-multipart
 deepface
-opencv-python-headless
+opencv-python
 numpy
 scipy
 tensorflow-cpu
