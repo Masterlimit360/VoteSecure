@@ -21,7 +21,7 @@ services:
   - type: web
     name: votesecure-face-service
     env: docker
-    plan: free # Note: DeepFace might require at least the Starter plan (512MB RAM) depending on model size
+    plan: free # Upgrade to Starter/Pro for DeepFace (requires 512MB+ RAM for TensorFlow)
     rootDir: face-service
     envVars:
       - key: PYTHON_VERSION

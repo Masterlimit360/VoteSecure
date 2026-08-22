@@ -25,6 +25,9 @@ model Admin {
   fullName        String
   email           String    @unique
   passwordHash    String
+  role            String    @default("admin")    // "admin" or "superadmin"
+  isApproved      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
   elections       Election[]
 }
 

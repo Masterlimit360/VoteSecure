@@ -22,8 +22,15 @@ export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction)
 };
 
 export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (req.user?.role !== 'admin') {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'superadmin') {
     return res.status(403).json({ error: 'Admin access required' });
+  }
+  return next();
+};
+
+export const requireSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'superadmin') {
+    return res.status(403).json({ error: 'SuperAdmin access required' });
   }
   return next();
 };

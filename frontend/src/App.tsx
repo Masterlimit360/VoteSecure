@@ -40,6 +40,9 @@ function App() {
                 <Link to="/register" className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                   Register
                 </Link>
+                <Link to="/admin/register" className="text-gray-500 dark:text-gray-400 hover:text-amber-500 text-sm font-medium transition-colors">
+                  Admin
+                </Link>
               </div>
             </div>
           </div>

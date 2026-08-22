@@ -1,12 +1,24 @@
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Users, Vote, ShieldAlert } from 'lucide-react';
+import { Users, Vote, ShieldAlert, Crown, CheckCircle2, XCircle, UserPlus } from 'lucide-react';
 import api from '../api';
+
+// Helper: decode JWT payload without a library
+const decodeToken = (token: string): any => {
+  try {
+    const payload = token.split('.')[1];
+    return JSON.parse(atob(payload));
+  } catch {
+    return null;
+  }
+};
 
 const AdminDashboard = () => {
   const [elections, setElections] = useState<any[]>([]);
   const [results, setResults] = useState<any[]>([]);
   const [selectedElectionId, setSelectedElectionId] = useState<number | null>(null);
+  const [pendingAdmins, setPendingAdmins] = useState<any[]>([]);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   // Forms
   const [showElectionForm, setShowElectionForm] = useState(false);
@@ -14,6 +26,17 @@ const AdminDashboard = () => {
 
   const [showCandidateForm, setShowCandidateForm] = useState(false);
   const [newCandidate, setNewCandidate] = useState({ name: '', bio: '', photoUrl: '' });
+
+  // Determine role from JWT
+  useEffect(() => {
+    const token = localStorage.getItem('votesecure_token');
+    if (token) {
+      const decoded = decodeToken(token);
+      if (decoded) {
+        setIsSuperAdmin(decoded.role === 'superadmin');
+      }
+    }
+  }, []);
 
   const fetchElections = async () => {
     try {
@@ -42,9 +65,24 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchPendingAdmins = async () => {
+    try {
+      const res = await api.get('/admin/pending-admins');
+      setPendingAdmins(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     fetchElections();
   }, []);
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      fetchPendingAdmins();
+    }
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     if (selectedElectionId) {
@@ -76,14 +114,117 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleApproveAdmin = async (adminId: number) => {
+    try {
+      await api.post(`/admin/approve-admin/${adminId}`);
+      fetchPendingAdmins();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to approve admin');
+    }
+  };
+
+  const handleRejectAdmin = async (adminId: number) => {
+    if (!confirm('Are you sure you want to reject this admin? Their account will be permanently deleted.')) return;
+    try {
+      await api.post(`/admin/reject-admin/${adminId}`);
+      fetchPendingAdmins();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to reject admin');
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Management Console</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Admin Management Console</h1>
+          <div className="mt-1 flex items-center space-x-2">
+            {isSuperAdmin ? (
+              <span className="inline-flex items-center space-x-1 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 px-3 py-1 rounded-full text-xs font-bold">
+                <Crown className="w-3 h-3" />
+                <span>SuperAdmin</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center space-x-1 bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-400 px-3 py-1 rounded-full text-xs font-bold">
+                <ShieldAlert className="w-3 h-3" />
+                <span>Admin</span>
+              </span>
+            )}
+          </div>
+        </div>
         <button onClick={() => setShowElectionForm(true)} className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-xl font-medium shadow-sm transition-colors">
           + Create Election
         </button>
       </div>
+
+      {/* SuperAdmin: Pending Admins Section */}
+      {isSuperAdmin && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-amber-200 dark:border-amber-800/50 overflow-hidden">
+          <div className="px-6 py-4 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800/50 flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="bg-amber-100 dark:bg-amber-800/50 p-2 rounded-lg">
+                <UserPlus className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Pending Admin Approvals</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Review and approve admin registration requests</p>
+              </div>
+            </div>
+            {pendingAdmins.length > 0 && (
+              <span className="bg-amber-500 text-white text-xs font-bold px-2.5 py-1 rounded-full animate-pulse">
+                {pendingAdmins.length} pending
+              </span>
+            )}
+          </div>
+
+          <div className="p-6">
+            {pendingAdmins.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
+                <p className="font-medium">No pending requests</p>
+                <p className="text-sm">All admin registrations have been processed.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pendingAdmins.map((admin: any) => (
+                  <div key={admin.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700 hover:border-amber-300 dark:hover:border-amber-700 transition-colors">
+                    <div className="flex items-center space-x-4">
+                      <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold text-lg">
+                        {admin.fullName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900 dark:text-white">{admin.fullName}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{admin.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
+                        {new Date(admin.createdAt).toLocaleDateString()}
+                      </span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleApproveAdmin(admin.id)}
+                          className="flex items-center space-x-1 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Approve</span>
+                        </button>
+                        <button
+                          onClick={() => handleRejectAdmin(admin.id)}
+                          className="flex items-center space-x-1 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors shadow-sm"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          <span>Reject</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showElectionForm && (
         <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">

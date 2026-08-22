@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import prisma from '../db';
-import { verifyToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { verifyToken, requireAdmin, requireSuperAdmin, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+// All admin routes require authentication and approved admin role
 router.use(verifyToken, requireAdmin);
 
 // Create an election
@@ -78,6 +79,97 @@ router.get('/elections/:id/results', async (req, res) => {
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: 'Server error fetching results' });
+  }
+});
+
+// ===== SuperAdmin-only routes =====
+
+// Get pending admin registrations
+router.get('/pending-admins', requireSuperAdmin, async (req, res) => {
+  try {
+    const pendingAdmins = await prisma.admin.findMany({
+      where: { isApproved: false },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        isApproved: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(pendingAdmins);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error fetching pending admins' });
+  }
+});
+
+// Approve an admin
+router.post('/approve-admin/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const adminId = parseInt(req.params.id);
+
+    const admin = await prisma.admin.findUnique({ where: { id: adminId } });
+    if (!admin) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+    if (admin.isApproved) {
+      return res.status(400).json({ error: 'Admin is already approved' });
+    }
+
+    await prisma.admin.update({
+      where: { id: adminId },
+      data: { isApproved: true }
+    });
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'admin',
+        actorId: (req as AuthRequest).user.id,
+        action: 'approve_admin',
+        details: { approvedAdminId: adminId, approvedAdminEmail: admin.email }
+      }
+    });
+
+    res.json({ message: `Admin "${admin.fullName}" has been approved.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error approving admin' });
+  }
+});
+
+// Reject (delete) a pending admin
+router.post('/reject-admin/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const adminId = parseInt(req.params.id);
+
+    const admin = await prisma.admin.findUnique({ where: { id: adminId } });
+    if (!admin) {
+      return res.status(404).json({ error: 'Admin not found' });
+    }
+    if (admin.isApproved) {
+      return res.status(400).json({ error: 'Cannot reject an already approved admin' });
+    }
+
+    await prisma.admin.delete({ where: { id: adminId } });
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'admin',
+        actorId: (req as AuthRequest).user.id,
+        action: 'reject_admin',
+        details: { rejectedAdminId: adminId, rejectedAdminEmail: admin.email }
+      }
+    });
+
+    res.json({ message: `Admin "${admin.fullName}" has been rejected and removed.` });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error rejecting admin' });
   }
 });
 
