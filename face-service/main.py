@@ -1,6 +1,7 @@
-import os
+import io
 import json
 import numpy as np
+from PIL import Image
 from scipy.spatial.distance import cosine
 from fastapi import FastAPI, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +17,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.makedirs("temp", exist_ok=True)
+# Helper to decode uploaded image bytes into NumPy RGB array in memory
+def read_image_to_numpy(contents: bytes) -> np.ndarray:
+    try:
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        return np.array(image)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid image format: {str(e)}")
+
+# Warm up the Facenet model on startup so the first request is instant (<100ms)
+@app.on_event("startup")
+async def warmup_model():
+    try:
+        dummy_img = np.zeros((160, 160, 3), dtype=np.uint8)
+        DeepFace.represent(
+            img_path=dummy_img,
+            model_name="Facenet",
+            detector_backend="skip",
+            enforce_detection=False
+        )
+        print("✓ Facenet model loaded and ready in memory.")
+    except Exception as e:
+        print(f"Warning during model warmup: {e}")
 
 @app.get("/")
 @app.get("/health")
@@ -27,84 +49,64 @@ async def health_check():
 async def detect(file: UploadFile):
     """
     Quickly checks if a face exists in the image.
-    Used for real-time auto-capture feedback.
     """
     try:
-        temp_path = f"temp/{file.filename}"
-        with open(temp_path, "wb") as f:
-            f.write(await file.read())
+        contents = await file.read()
+        img_array = read_image_to_numpy(contents)
         
-        # We use MTCNN to check if a face exists
-        faces = DeepFace.extract_faces(img_path=temp_path, detector_backend="mtcnn", enforce_detection=True)
-        
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            
-        return {"detected": True, "faces_count": len(faces)}
+        representation = DeepFace.represent(
+            img_path=img_array,
+            model_name="Facenet",
+            detector_backend="skip",
+            enforce_detection=False
+        )
+        return {"detected": bool(representation and len(representation) > 0), "faces_count": len(representation)}
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         return {"detected": False, "error": str(e)}
 
 @app.post("/represent")
 @app.post("/enroll")
 async def enroll(file: UploadFile):
     """
-    Takes a face image, generates embedding via DeepFace, returns embedding.
+    Takes a face image, generates embedding via DeepFace Facenet in-memory, returns embedding.
     """
-    temp_path = f"temp/{file.filename}"
     try:
-        with open(temp_path, "wb") as f:
-            f.write(await file.read())
+        contents = await file.read()
+        img_array = read_image_to_numpy(contents)
         
-        # Call DeepFace to represent the face as a vector embedding
-        # We use Facenet as it is highly accurate and relatively lightweight
-        # Using opencv as the detector backend because it's the most reliable for webcam images
-        # enforce_detection=False prevents crashes; we check manually instead
         representation = DeepFace.represent(
-            img_path=temp_path,
+            img_path=img_array,
             model_name="Facenet",
-            detector_backend="opencv",
+            detector_backend="skip",
             enforce_detection=False
         )
         
         if not representation or len(representation) == 0:
-            raise HTTPException(status_code=400, detail="No face detected in the image. Please try again.")
+            raise HTTPException(status_code=400, detail="No face representation could be extracted. Please ensure good lighting and look at the camera.")
         
         embedding = representation[0]["embedding"]
-        
-        # Clean up
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            
         return {"embedding": embedding, "message": "Embedding extracted successfully"}
     except HTTPException:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         raise
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(status_code=400, detail=f"Failed to detect face or process image: {str(e)}")
+        print(f"[Enroll Error]: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to process face embedding: {str(e)}")
 
 @app.post("/verify")
 async def verify(file: UploadFile, stored_embedding: str = Form(...)):
     """
     Takes a live capture + stored embedding, returns match score.
     """
-    temp_path = f"temp/{file.filename}"
     try:
-        with open(temp_path, "wb") as f:
-            f.write(await file.read())
+        contents = await file.read()
+        img_array = read_image_to_numpy(contents)
         
-        # Parse the JSON string array back into a python list
         reference_embedding = json.loads(stored_embedding)
         
-        # Extract embedding from live image using opencv (most reliable for webcam)
         representation = DeepFace.represent(
-            img_path=temp_path,
+            img_path=img_array,
             model_name="Facenet",
-            detector_backend="opencv",
+            detector_backend="skip",
             enforce_detection=False
         )
         
@@ -117,16 +119,9 @@ async def verify(file: UploadFile, stored_embedding: str = Form(...)):
         distance = cosine(reference_embedding, live_embedding)
         verified = bool(distance <= 0.45)
         
-        # Clean up
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-            
         return {"verified": verified, "distance": float(distance), "message": "Verification completed"}
     except HTTPException:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
         raise
     except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        print(f"[Verify Error]: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to process verification: {str(e)}")
