@@ -2,9 +2,30 @@ import { Router } from 'express';
 import prisma from '../db';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
+import axios from 'axios';
+import FormData from 'form-data';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
+const FACE_SERVICE_URL = (process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Cosine Distance Helper for DeepFace vectors
+function calculateCosineDistance(vecA: number[], vecB: number[]): number {
+  if (!vecA || !vecB || vecA.length === 0 || vecA.length !== vecB.length) return 1.0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dot += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  if (normA === 0 || normB === 0) return 1.0;
+  const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  return Math.max(0, 1.0 - similarity);
+}
 
 // Register voter
 router.post('/register', async (req, res) => {
@@ -71,6 +92,128 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+// Biometric Face Login (1:N face recognition match)
+router.post('/face-login', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No face image provided for scanning.' });
+    }
+
+    // 1. Send captured frame to Python Face Service to extract the feature embedding vector
+    const formData = new FormData();
+    formData.append('file', req.file.buffer, req.file.originalname || 'scan.jpg');
+
+    let faceResponse;
+    try {
+      faceResponse = await axios.post(`${FACE_SERVICE_URL}/enroll`, formData, {
+        headers: { ...formData.getHeaders() },
+        timeout: 45000 // 45s to allow cloud cold-starts
+      });
+    } catch (faceErr: any) {
+      console.error('Face Service error during face login:', faceErr.message);
+      if (faceErr.response?.data?.detail) {
+        return res.status(400).json({ error: faceErr.response.data.detail });
+      }
+      return res.status(503).json({
+        error: 'Face recognition service is temporarily unavailable. Please try again or log in using password.'
+      });
+    }
+
+    const liveEmbedding = faceResponse.data?.embedding;
+    if (!liveEmbedding || !Array.isArray(liveEmbedding)) {
+      return res.status(400).json({ error: 'Could not extract biometric face features. Please try again.' });
+    }
+
+    // 2. Fetch all verified voters who have enrolled facial biometrics
+    const enrolledVoters = await prisma.voter.findMany({
+      where: {
+        isVerified: true,
+        faceEmbedding: { not: null as any }
+      }
+    });
+
+    if (enrolledVoters.length === 0) {
+      return res.status(404).json({
+        error: 'No enrolled voters found in the system. Please register your account with facial biometrics first.'
+      });
+    }
+
+    // 3. 1:N Vector Cosine Distance Matching
+    let bestMatch: any = null;
+    let minDistance = Infinity;
+
+    for (const voter of enrolledVoters) {
+      let storedEmbedding: number[] | null = null;
+      if (Array.isArray(voter.faceEmbedding)) {
+        storedEmbedding = voter.faceEmbedding as any as number[];
+      } else if (typeof voter.faceEmbedding === 'string') {
+        try {
+          storedEmbedding = JSON.parse(voter.faceEmbedding);
+        } catch {
+          storedEmbedding = null;
+        }
+      }
+
+      if (storedEmbedding && storedEmbedding.length === liveEmbedding.length) {
+        const distance = calculateCosineDistance(liveEmbedding, storedEmbedding);
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestMatch = voter;
+        }
+      }
+    }
+
+    // Facenet cosine distance threshold: <= 0.45 indicates a verified identity match
+    const MATCH_THRESHOLD = 0.45;
+
+    if (!bestMatch || minDistance > MATCH_THRESHOLD) {
+      return res.status(401).json({
+        error: 'Face not recognized. Please ensure your face is well-lit and unobstructed, or log in with your credentials.',
+        minDistance: minDistance !== Infinity ? Number(minDistance.toFixed(4)) : null
+      });
+    }
+
+    // 4. Create authentication token for the matched voter
+    const token = jwt.sign(
+      { id: bestMatch.id, role: 'voter', indexNumber: bestMatch.indexNumber },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // 5. Create audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          actorType: 'voter',
+          actorId: bestMatch.id,
+          action: 'face_login',
+          details: {
+            distance: Number(minDistance.toFixed(4)),
+            confidence: Math.round((1 - minDistance) * 100)
+          }
+        }
+      });
+    } catch (logErr) {
+      console.warn('Failed to save audit log for face login:', logErr);
+    }
+
+    res.status(200).json({
+      message: 'Face verified successfully! Welcome back.',
+      token,
+      voter: {
+        id: bestMatch.id,
+        fullName: bestMatch.fullName,
+        indexNumber: bestMatch.indexNumber,
+        email: bestMatch.email
+      },
+      confidence: Math.round((1 - minDistance) * 100)
+    });
+  } catch (error) {
+    console.error('Error during face login:', error);
+    res.status(500).json({ error: 'Internal server error during face authentication.' });
   }
 });
 

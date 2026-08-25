@@ -67,7 +67,22 @@ const VotingFlow = () => {
     }
   }, [webcamRef]);
 
-  const { feedback, isValid } = useFaceScanner(webcamRef, canvasRef, captureAndVerify);
+  const { feedback, isValid, reset } = useFaceScanner(webcamRef, canvasRef, captureAndVerify);
+
+  const handleManualVerify = () => {
+    if (!webcamRef.current) return;
+    const screenshot = webcamRef.current.getScreenshot();
+    if (screenshot) {
+      captureAndVerify(screenshot);
+    } else {
+      setError('Webcam stream not ready. Please allow camera permissions.');
+    }
+  };
+
+  const handleRescan = () => {
+    setError('');
+    reset();
+  };
 
   const castVote = async (candidateId: number) => {
     try {
@@ -84,16 +99,20 @@ const VotingFlow = () => {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       {step === 1 && (
-        <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-800 text-center">
-          <ShieldCheck className="h-16 w-16 text-primary-500 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Verify Your Identity</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-2 mb-4">Please look directly at the camera to verify your identity before accessing the ballot.</p>
+        <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 sm:p-10 shadow-xl border border-gray-100 dark:border-gray-800 text-center space-y-5">
+          <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white shadow-lg shadow-primary-500/25">
+            <ShieldCheck className="h-8 w-8" />
+          </div>
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Biometric Voter Verification</h2>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Look directly at the camera to verify your cryptographic identity before accessing the ballot.</p>
+          </div>
           
-          <div className="mb-4 inline-block bg-gray-100 dark:bg-gray-800 px-6 py-2 rounded-full font-bold text-primary-600 dark:text-primary-400 shadow-inner">
+          <div className="inline-block bg-gray-100 dark:bg-gray-800 px-5 py-1.5 rounded-full font-bold text-xs sm:text-sm text-primary-600 dark:text-primary-400 shadow-inner">
             {feedback}
           </div>
 
-          <div className={`relative max-w-md mx-auto rounded-2xl overflow-hidden shadow-inner bg-black aspect-video flex items-center justify-center transition-all duration-300 border-4 ${isValid ? 'border-green-500 shadow-green-500/50' : 'border-transparent'}`}>
+          <div className={`relative max-w-md mx-auto rounded-3xl overflow-hidden shadow-2xl bg-black aspect-video flex items-center justify-center transition-all duration-300 border-4 ${isValid ? 'border-green-500 ring-4 ring-green-500/30' : 'border-gray-200 dark:border-gray-800'}`}>
             <Webcam
               audio={false}
               ref={webcamRef}
@@ -105,18 +124,31 @@ const VotingFlow = () => {
           </div>
 
           {error && (
-            <div className="mt-6 flex items-center justify-center space-x-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="h-5 w-5" />
-              <span>{error}</span>
+            <div className="flex items-start gap-3 text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 p-4 rounded-2xl text-left max-w-md mx-auto">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <span className="flex-1">{error}</span>
             </div>
           )}
 
-          <button
-            disabled={true}
-            className={`mt-8 text-white px-8 py-4 rounded-xl font-bold text-lg w-full max-w-md transition-colors opacity-50 bg-primary-600`}
-          >
-            {verifying ? 'Scanning face against ML Model...' : isValid ? 'Auto-Capturing...' : 'Verify & Continue'}
-          </button>
+          <div className="flex gap-3 max-w-md mx-auto pt-2">
+            <button
+              type="button"
+              onClick={handleManualVerify}
+              disabled={verifying}
+              className="flex-1 py-3.5 px-4 bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-primary-600/20 disabled:opacity-50 transition-all text-sm"
+            >
+              {verifying ? 'Verifying Identity...' : isValid ? 'Auto-Capturing...' : 'Verify & Continue'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRescan}
+              className="py-3.5 px-4 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-all text-sm"
+              title="Rescan / Reset Camera"
+            >
+              Rescan
+            </button>
+          </div>
         </div>
       )}
 

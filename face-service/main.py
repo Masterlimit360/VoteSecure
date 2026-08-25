@@ -18,9 +18,10 @@ app.add_middleware(
 
 os.makedirs("temp", exist_ok=True)
 
+@app.get("/")
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "face-service"}
+    return {"status": "ok", "service": "face-service", "ready": True}
 
 @app.post("/detect")
 async def detect(file: UploadFile):
@@ -45,6 +46,7 @@ async def detect(file: UploadFile):
             os.remove(temp_path)
         return {"detected": False, "error": str(e)}
 
+@app.post("/represent")
 @app.post("/enroll")
 async def enroll(file: UploadFile):
     """
@@ -75,7 +77,7 @@ async def enroll(file: UploadFile):
         if os.path.exists(temp_path):
             os.remove(temp_path)
             
-        return {"embedding": embedding, "message": "Enrollment successful"}
+        return {"embedding": embedding, "message": "Embedding extracted successfully"}
     except HTTPException:
         if os.path.exists(temp_path):
             os.remove(temp_path)

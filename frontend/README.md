@@ -30,3 +30,8 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+##cd face-service
+# Activate the virtual environment
+.\venv\Scripts\activate
+# Run the service
+uvicorn main:app --host 127.0.0.1 --port 8000

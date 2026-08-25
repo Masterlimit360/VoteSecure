@@ -8,7 +8,35 @@ import { verifyToken, AuthRequest } from '../middleware/auth';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8000';
+const FACE_SERVICE_URL = (process.env.FACE_SERVICE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+
+// Diagnostic endpoint: check Face Service health & connectivity
+router.get('/status', async (req, res) => {
+  const startTime = Date.now();
+  try {
+    const response = await axios.get(`${FACE_SERVICE_URL}/health`, { timeout: 15000 });
+    const latencyMs = Date.now() - startTime;
+    res.json({
+      status: 'ok',
+      faceServiceReachable: true,
+      configuredUrl: FACE_SERVICE_URL,
+      latencyMs,
+      faceServiceResponse: response.data
+    });
+  } catch (error: any) {
+    const latencyMs = Date.now() - startTime;
+    console.error(`[Face Service Check Failed] Target: ${FACE_SERVICE_URL} - Error: ${error.message}`);
+    res.status(503).json({
+      status: 'error',
+      faceServiceReachable: false,
+      configuredUrl: FACE_SERVICE_URL,
+      latencyMs,
+      error: error.message,
+      code: error.code || 'UNKNOWN',
+      hint: 'Ensure FACE_SERVICE_URL is set in backend environment to the active face service URL (e.g. https://votesecure-face-service.onrender.com).'
+    });
+  }
+});
 
 // Proxy face detection (fast check)
 router.post('/detect', upload.single('image'), async (req, res) => {
@@ -21,12 +49,14 @@ router.post('/detect', upload.single('image'), async (req, res) => {
     formData.append('file', req.file.buffer, req.file.originalname);
 
     const faceResponse = await axios.post(`${FACE_SERVICE_URL}/detect`, formData, {
-      headers: { ...formData.getHeaders() }
+      headers: { ...formData.getHeaders() },
+      timeout: 30000
     });
 
     res.json(faceResponse.data);
-  } catch (error) {
-    res.status(500).json({ detected: false, error: 'Failed to communicate with Face Service' });
+  } catch (error: any) {
+    console.error(`[Face Detect Error] Target: ${FACE_SERVICE_URL} - Error:`, error.message);
+    res.status(500).json({ detected: false, error: 'Failed to communicate with Face Service', detail: error.message });
   }
 });
 
@@ -41,7 +71,8 @@ router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequ
     formData.append('file', req.file.buffer, req.file.originalname);
 
     const faceResponse = await axios.post(`${FACE_SERVICE_URL}/enroll`, formData, {
-      headers: { ...formData.getHeaders() }
+      headers: { ...formData.getHeaders() },
+      timeout: 45000
     });
 
     // Save embedding and photo to voter profile
@@ -89,7 +120,8 @@ router.post('/verify', verifyToken, upload.single('image'), async (req: AuthRequ
     formData.append('stored_embedding', JSON.stringify(voter.faceEmbedding));
 
     const faceResponse = await axios.post(`${FACE_SERVICE_URL}/verify`, formData, {
-      headers: { ...formData.getHeaders() }
+      headers: { ...formData.getHeaders() },
+      timeout: 45000
     });
 
     if (faceResponse.data.verified) {
@@ -107,11 +139,15 @@ router.post('/verify', verifyToken, upload.single('image'), async (req: AuthRequ
       res.status(401).json({ verified: false, error: 'Face verification failed' });
     }
   } catch (error: any) {
-    console.error(error);
+    console.error(`[Face Verify Error] Target: ${FACE_SERVICE_URL} - Error:`, error.message);
     if (error.response && error.response.data && error.response.data.detail) {
       res.status(400).json({ error: error.response.data.detail });
     } else {
-      res.status(500).json({ error: 'Failed to communicate with Face Service' });
+      res.status(500).json({
+        error: 'Failed to communicate with Face Service',
+        detail: error.message,
+        targetUrl: FACE_SERVICE_URL
+      });
     }
   }
 });
