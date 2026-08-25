@@ -252,17 +252,17 @@ router.post('/admin/register', async (req, res) => {
         JWT_SECRET,
         { expiresIn: '24h' }
       );
-      res.status(201).json({ 
-        message: 'SuperAdmin account created! You are the first administrator.', 
-        token, 
+      res.status(201).json({
+        message: 'SuperAdmin account created! You are the first administrator.',
+        token,
         adminId: admin.id,
         role: 'superadmin',
         isApproved: true
       });
     } else {
       // Subsequent admins must wait for approval — no token issued
-      res.status(201).json({ 
-        message: 'Admin registration submitted. Your account is pending approval by a SuperAdmin.', 
+      res.status(201).json({
+        message: 'Admin registration submitted. Your account is pending approval by a SuperAdmin.',
         adminId: admin.id,
         role: 'admin',
         isApproved: false
@@ -302,10 +302,10 @@ router.post('/admin/login', async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    res.status(200).json({ 
-      message: 'Login successful', 
-      token, 
-      admin: { id: admin.id, fullName: admin.fullName, role: admin.role } 
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      admin: { id: admin.id, fullName: admin.fullName, role: admin.role }
     });
   } catch (error) {
     console.error(error);
