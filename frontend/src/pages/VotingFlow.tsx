@@ -65,9 +65,14 @@ const VotingFlow = () => {
     } finally {
       setVerifying(false);
     }
-  }, [webcamRef]);
+  }, []);
 
-  const { feedback, isValid, reset } = useFaceScanner(webcamRef, canvasRef, captureAndVerify);
+  const { feedback, isValid, reset } = useFaceScanner(
+    webcamRef,
+    canvasRef,
+    captureAndVerify,
+    step === 1 && !verifying
+  );
 
   const handleManualVerify = () => {
     if (!webcamRef.current) return;

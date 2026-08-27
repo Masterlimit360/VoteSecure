@@ -195,8 +195,8 @@ router.post('/face-login', upload.single('image'), async (req, res) => {
       }
     }
 
-    // Facenet cosine distance threshold: <= 0.45 indicates a verified identity match
-    const MATCH_THRESHOLD = 0.45;
+    // Facenet cosine distance threshold: <= 0.38 indicates a verified identity match
+    const MATCH_THRESHOLD = 0.38;
 
     if (!bestMatch || minDistance > MATCH_THRESHOLD) {
       return res.status(401).json({
