@@ -201,7 +201,48 @@ export const useFaceScanner = (
             if (validFramesCount.current >= REQUIRED_VALID_FRAMES) {
               capturedRef.current = true;
               setFeedback("✓ Face Captured!");
-              const imageSrc = webcam.getScreenshot();
+
+              // Crop tight 256x256 face portrait using MediaPipe landmarks bounding box
+              let imageSrc: string | null = null;
+              try {
+                const vWidth = video.videoWidth;
+                const vHeight = video.videoHeight;
+                if (vWidth > 0 && vHeight > 0) {
+                  const x1 = Math.max(0, minX * vWidth);
+                  const y1 = Math.max(0, minY * vHeight);
+                  const x2 = Math.min(vWidth, maxX * vWidth);
+                  const y2 = Math.min(vHeight, maxY * vHeight);
+
+                  const faceW = x2 - x1;
+                  const faceH = y2 - y1;
+
+                  // Add 20% margin around the face
+                  const padX = faceW * 0.20;
+                  const padY = faceH * 0.20;
+
+                  const cropX = Math.max(0, x1 - padX);
+                  const cropY = Math.max(0, y1 - padY);
+                  const cropW = Math.min(vWidth - cropX, faceW + padX * 2);
+                  const cropH = Math.min(vHeight - cropY, faceH + padY * 2);
+
+                  const cropCanvas = document.createElement('canvas');
+                  cropCanvas.width = 256;
+                  cropCanvas.height = 256;
+                  const cropCtx = cropCanvas.getContext('2d');
+                  if (cropCtx) {
+                    cropCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 256, 256);
+                    imageSrc = cropCanvas.toDataURL('image/jpeg', 0.92);
+                  }
+                }
+              } catch (cropErr) {
+                console.warn("Client face crop fallback:", cropErr);
+              }
+
+              // Fallback to full screenshot if cropping failed
+              if (!imageSrc) {
+                imageSrc = webcam.getScreenshot();
+              }
+
               if (imageSrc) {
                 onCaptureReadyRef.current(imageSrc);
               }
