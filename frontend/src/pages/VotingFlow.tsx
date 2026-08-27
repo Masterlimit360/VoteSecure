@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Webcam from 'react-webcam';
-import { ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, AlertCircle, UserCheck, ArrowRightLeft } from 'lucide-react';
 import api from '../api';
 import { useFaceScanner } from '../hooks/useFaceScanner';
 
@@ -17,14 +17,20 @@ const VotingFlow = () => {
   
   // Real candidates fetched from DB
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [currentVoter, setCurrentVoter] = useState<any>(null);
 
   useEffect(() => {
-    // We fetch the active elections and filter to the current ID to get its candidates.
-    // In a real app we'd have a specific GET /elections/:id endpoint, but we can reuse the active elections list here.
-    const loadCandidates = async () => {
+    // Fetch election candidates and currently signed in voter profile
+    const loadData = async () => {
       try {
-        const res = await api.get('/voters/elections');
-        const election = res.data.find((e: any) => e.id === parseInt(id || '0'));
+        const [electionsRes, profileRes] = await Promise.all([
+          api.get('/voters/elections'),
+          api.get('/voters/me')
+        ]);
+        
+        setCurrentVoter(profileRes.data);
+
+        const election = electionsRes.data.find((e: any) => e.id === parseInt(id || '0'));
         if (election) {
           setCandidates(election.candidates || []);
         } else {
@@ -34,7 +40,7 @@ const VotingFlow = () => {
         console.error(err);
       }
     };
-    loadCandidates();
+    loadData();
   }, [id]);
 
   const captureAndVerify = useCallback(async (imageSrc: string) => {
@@ -50,7 +56,7 @@ const VotingFlow = () => {
       const formData = new FormData();
       formData.append('image', blob, 'verify.jpg');
 
-      // Call the Face Service proxy to verify identity against enrolled face
+      // Call the Face Service proxy to verify identity specifically against the signed in voter
       const response = await api.post('/face/verify', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -89,6 +95,11 @@ const VotingFlow = () => {
     reset();
   };
 
+  const handleSwitchAccount = () => {
+    localStorage.removeItem('votesecure_token');
+    navigate('/login');
+  };
+
   const castVote = async (candidateId: number) => {
     try {
       await api.post('/voters/votes', {
@@ -109,9 +120,42 @@ const VotingFlow = () => {
             <ShieldCheck className="h-8 w-8" />
           </div>
           <div>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Biometric Voter Verification</h2>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Look directly at the camera to verify your cryptographic identity before accessing the ballot.</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Biometric Identity Challenge</h2>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">Look directly at the camera to verify your physical face identity before accessing the official ballot.</p>
           </div>
+
+          {/* Current Signed In Voter Banner */}
+          {currentVoter && (
+            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-gray-800/70 rounded-2xl border border-gray-200 dark:border-gray-700/60 text-left max-w-md mx-auto shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl overflow-hidden bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center font-bold text-primary-600 dark:text-primary-400 ring-2 ring-primary-500/20">
+                  {currentVoter.faceImageBase64 ? (
+                    <img src={currentVoter.faceImageBase64} alt="Enrolled Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    currentVoter.fullName.charAt(0)
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    <span>Signed In Account</span>
+                  </div>
+                  <p className="text-sm font-extrabold text-gray-900 dark:text-white">{currentVoter.fullName}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">ID: {currentVoter.indexNumber}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSwitchAccount}
+                className="flex items-center gap-1 text-xs font-bold text-primary-600 hover:text-primary-700 dark:text-primary-400 hover:underline px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-700 shadow-sm border border-gray-200 dark:border-gray-600 transition-all"
+                title="Log out and sign in with your own account"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Switch</span>
+              </button>
+            </div>
+          )}
           
           <div className="inline-block bg-gray-100 dark:bg-gray-800 px-5 py-1.5 rounded-full font-bold text-xs sm:text-sm text-primary-600 dark:text-primary-400 shadow-inner">
             {feedback}
@@ -129,9 +173,21 @@ const VotingFlow = () => {
           </div>
 
           {error && (
-            <div className="flex items-start gap-3 text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 p-4 rounded-2xl text-left max-w-md mx-auto">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <span className="flex-1">{error}</span>
+            <div className="flex flex-col gap-2.5 text-red-600 dark:text-red-400 text-sm bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 p-4 rounded-2xl text-left max-w-md mx-auto animate-fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <span className="flex-1 font-medium">{error}</span>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={handleSwitchAccount}
+                  className="text-xs font-bold text-red-700 dark:text-red-300 hover:underline flex items-center gap-1"
+                >
+                  <ArrowRightLeft className="w-3.5 h-3.5" />
+                  <span>Not {currentVoter?.fullName || 'this voter'}? Sign in to your account &rarr;</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -162,8 +218,9 @@ const VotingFlow = () => {
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Official Ballot</h2>
-              <p className="text-primary-600 dark:text-primary-400 font-medium flex items-center mt-1">
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Identity Cryptographically Verified
+              <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center mt-1 text-sm">
+                <CheckCircle2 className="h-4 w-4 mr-1.5 text-emerald-500" />
+                <span>Identity Cryptographically Verified: <strong className="font-bold text-gray-900 dark:text-white">{currentVoter?.fullName || 'Voter'}</strong> (ID: {currentVoter?.indexNumber})</span>
               </p>
             </div>
           </div>
@@ -199,7 +256,7 @@ const VotingFlow = () => {
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-12 shadow-xl border border-gray-100 dark:border-gray-800 text-center space-y-6">
           <CheckCircle2 className="h-24 w-24 text-primary-500 mx-auto" />
           <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">Vote Cast Successfully!</h2>
-          <p className="text-gray-500 dark:text-gray-400">Your ballot has been securely recorded and encrypted.</p>
+          <p className="text-gray-500 dark:text-gray-400">Your ballot has been securely recorded and encrypted for {currentVoter?.fullName || 'your account'}.</p>
           <button
             onClick={() => navigate('/dashboard')}
             className="mt-8 bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-8 py-3 rounded-xl font-bold transition-colors"
