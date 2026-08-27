@@ -95,6 +95,36 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// Helper function to call Face Service with automatic retry on 429/503/cold-starts
+async function callFaceServiceEnrollWithRetry(buffer: Buffer, originalname: string, maxRetries = 2): Promise<any> {
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const formData = new FormData();
+      formData.append('file', buffer, originalname || 'scan.jpg');
+
+      const response = await axios.post(`${FACE_SERVICE_URL}/enroll`, formData, {
+        headers: { ...formData.getHeaders() },
+        timeout: 50000 // 50s to allow cloud service wake-up
+      });
+      return response.data;
+    } catch (err: any) {
+      lastError = err;
+      const status = err.response?.status;
+      const isRateLimitedOrWaking = status === 429 || status === 503 || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
+
+      if (isRateLimitedOrWaking && attempt < maxRetries) {
+        const delayMs = (attempt + 1) * 1500;
+        console.warn(`[Face Service Retry] Attempt ${attempt + 1} failed (${err.message}). Retrying in ${delayMs}ms...`);
+        await new Promise((res) => setTimeout(res, delayMs));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastError;
+}
+
 // Biometric Face Login (1:N face recognition match)
 router.post('/face-login', upload.single('image'), async (req, res) => {
   try {
@@ -103,26 +133,25 @@ router.post('/face-login', upload.single('image'), async (req, res) => {
     }
 
     // 1. Send captured frame to Python Face Service to extract the feature embedding vector
-    const formData = new FormData();
-    formData.append('file', req.file.buffer, req.file.originalname || 'scan.jpg');
-
-    let faceResponse;
+    let faceData;
     try {
-      faceResponse = await axios.post(`${FACE_SERVICE_URL}/enroll`, formData, {
-        headers: { ...formData.getHeaders() },
-        timeout: 45000 // 45s to allow cloud cold-starts
-      });
+      faceData = await callFaceServiceEnrollWithRetry(req.file.buffer, req.file.originalname);
     } catch (faceErr: any) {
       console.error('Face Service error during face login:', faceErr.message);
+      if (faceErr.response?.status === 429) {
+        return res.status(429).json({
+          error: 'Face recognition service is currently handling high traffic. Please wait a moment and try again, or sign in using your Voter ID and password.'
+        });
+      }
       if (faceErr.response?.data?.detail) {
         return res.status(400).json({ error: faceErr.response.data.detail });
       }
       return res.status(503).json({
-        error: 'Face recognition service is temporarily unavailable. Please try again or log in using password.'
+        error: 'Face recognition service is temporarily unavailable. Please try again or log in using your Voter ID and password.'
       });
     }
 
-    const liveEmbedding = faceResponse.data?.embedding;
+    const liveEmbedding = faceData?.embedding;
     if (!liveEmbedding || !Array.isArray(liveEmbedding)) {
       return res.status(400).json({ error: 'Could not extract biometric face features. Please try again.' });
     }

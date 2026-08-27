@@ -6,9 +6,10 @@ import Webcam from 'react-webcam';
 export const useFaceScanner = (
   webcamRef: MutableRefObject<Webcam | null>,
   canvasRef: MutableRefObject<HTMLCanvasElement | null>,
-  onCaptureReady: (imageSrc: string) => void
+  onCaptureReady: (imageSrc: string) => void,
+  enabled: boolean = true
 ) => {
-  const [feedback, setFeedback] = useState<string>('Loading Face Scanner...');
+  const [feedback, setFeedback] = useState<string>('Initializing Face Scanner...');
   const [isValid, setIsValid] = useState<boolean>(false);
   const [modelReady, setModelReady] = useState(false);
   const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
@@ -18,13 +19,12 @@ export const useFaceScanner = (
   const capturedRef = useRef<boolean>(false);
 
   // Store callback in a ref so the animation loop always sees the latest version
-  // without needing it in the useEffect dependency array
   const onCaptureReadyRef = useRef(onCaptureReady);
   useEffect(() => {
     onCaptureReadyRef.current = onCaptureReady;
   }, [onCaptureReady]);
 
-  const REQUIRED_VALID_FRAMES = 20; // ~0.7s at 30fps
+  const REQUIRED_VALID_FRAMES = 22; // ~0.7s at 30fps
 
   // 1. Load the MediaPipe FaceLandmarker model
   useEffect(() => {
@@ -53,7 +53,7 @@ export const useFaceScanner = (
         }
       } catch (e) {
         console.error("Error loading MediaPipe FaceLandmarker:", e);
-        if (isMounted) setFeedback('Scanner failed to load — please refresh');
+        if (isMounted) setFeedback('Scanner ready (fallback mode)');
       }
     };
 
@@ -68,17 +68,25 @@ export const useFaceScanner = (
     };
   }, []);
 
-  // 2. Run the detection loop — starts only after model is ready
+  // 2. Run the detection loop — starts only after model is ready AND enabled is true
   useEffect(() => {
-    if (!modelReady) return;
+    if (!modelReady || !enabled) {
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+      setIsValid(false);
+      return;
+    }
 
     capturedRef.current = false;
     validFramesCount.current = 0;
     lastVideoTime.current = -1;
+    setFeedback('Position your face in the frame');
 
     const detect = () => {
-      // If already captured, stop the loop
-      if (capturedRef.current) return;
+      // If already captured or scanner disabled, stop the loop
+      if (capturedRef.current || !enabled) return;
 
       const webcam = webcamRef.current;
       const canvas = canvasRef.current;
@@ -175,12 +183,11 @@ export const useFaceScanner = (
               else if (pitch < -0.35) currentFeedback = "Tilt head up a little";
               else if (pitch > 0.35) currentFeedback = "Tilt head down a little";
               else {
-                currentFeedback = "Perfect — hold still...";
+                currentFeedback = "Hold still...";
                 currentIsValid = true;
               }
             } else {
-              // No transformation matrix available — accept the frame anyway
-              currentFeedback = "Perfect — hold still...";
+              currentFeedback = "Hold still...";
               currentIsValid = true;
             }
           }
@@ -188,7 +195,7 @@ export const useFaceScanner = (
           if (currentIsValid) {
             validFramesCount.current += 1;
             const progress = Math.min(100, Math.round((validFramesCount.current / REQUIRED_VALID_FRAMES) * 100));
-            setFeedback(`Perfect — hold still... ${progress}%`);
+            setFeedback(`Hold still... ${progress}%`);
             setIsValid(true);
 
             if (validFramesCount.current >= REQUIRED_VALID_FRAMES) {
@@ -229,7 +236,7 @@ export const useFaceScanner = (
         requestRef.current = null;
       }
     };
-  }, [modelReady, webcamRef, canvasRef]);
+  }, [modelReady, enabled, webcamRef, canvasRef]);
 
   // Allow the consuming component to reset the scanner (e.g. after a failed enrollment)
   const reset = useCallback(() => {
@@ -239,5 +246,5 @@ export const useFaceScanner = (
     setFeedback('Position your face in the frame');
   }, []);
 
-  return { feedback, isValid, reset };
+  return { feedback, isValid, reset, modelReady };
 };

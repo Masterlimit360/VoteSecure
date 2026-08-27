@@ -38,6 +38,34 @@ router.get('/status', async (req, res) => {
   }
 });
 
+// Helper function to call Face Service with automatic retry
+async function callFaceEndpointWithRetry(endpoint: string, createFormData: () => FormData, maxRetries = 2): Promise<any> {
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const formData = createFormData();
+      const response = await axios.post(`${FACE_SERVICE_URL}${endpoint}`, formData, {
+        headers: { ...formData.getHeaders() },
+        timeout: 50000
+      });
+      return response.data;
+    } catch (err: any) {
+      lastError = err;
+      const status = err.response?.status;
+      const isRateLimitedOrWaking = status === 429 || status === 503 || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
+
+      if (isRateLimitedOrWaking && attempt < maxRetries) {
+        const delayMs = (attempt + 1) * 1500;
+        console.warn(`[Face Service Retry ${endpoint}] Attempt ${attempt + 1} failed (${err.message}). Retrying in ${delayMs}ms...`);
+        await new Promise((res) => setTimeout(res, delayMs));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastError;
+}
+
 // Proxy face detection (fast check)
 router.post('/detect', upload.single('image'), async (req, res) => {
   try {
@@ -45,15 +73,13 @@ router.post('/detect', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image provided' });
     }
 
-    const formData = new FormData();
-    formData.append('file', req.file.buffer, req.file.originalname);
-
-    const faceResponse = await axios.post(`${FACE_SERVICE_URL}/detect`, formData, {
-      headers: { ...formData.getHeaders() },
-      timeout: 30000
+    const data = await callFaceEndpointWithRetry('/detect', () => {
+      const formData = new FormData();
+      formData.append('file', req.file!.buffer, req.file!.originalname);
+      return formData;
     });
 
-    res.json(faceResponse.data);
+    res.json(data);
   } catch (error: any) {
     console.error(`[Face Detect Error] Target: ${FACE_SERVICE_URL} - Error:`, error.message);
     res.status(500).json({ detected: false, error: 'Failed to communicate with Face Service', detail: error.message });
@@ -67,12 +93,10 @@ router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequ
       return res.status(400).json({ error: 'No image provided' });
     }
 
-    const formData = new FormData();
-    formData.append('file', req.file.buffer, req.file.originalname);
-
-    const faceResponse = await axios.post(`${FACE_SERVICE_URL}/enroll`, formData, {
-      headers: { ...formData.getHeaders() },
-      timeout: 45000
+    const data = await callFaceEndpointWithRetry('/enroll', () => {
+      const formData = new FormData();
+      formData.append('file', req.file!.buffer, req.file!.originalname);
+      return formData;
     });
 
     // Save embedding and photo to voter profile
@@ -84,20 +108,23 @@ router.post('/enroll', verifyToken, upload.single('image'), async (req: AuthRequ
       await prisma.voter.update({
         where: { id: req.user.id },
         data: { 
-          faceEmbedding: faceResponse.data.embedding, 
+          faceEmbedding: data.embedding, 
           faceImageBase64: faceImageBase64,
           isVerified: true 
         }
       });
     }
 
-    res.json({ message: 'Enrollment successful', embedding: faceResponse.data.embedding });
+    res.json({ message: 'Enrollment successful', embedding: data.embedding });
   } catch (error: any) {
     console.error(error);
+    if (error.response?.status === 429) {
+      return res.status(429).json({ detail: 'Face recognition service is busy. Please wait a moment and try again.' });
+    }
     if (error.response && error.response.data && error.response.data.detail) {
       res.status(400).json({ detail: error.response.data.detail });
     } else {
-      res.status(500).json({ error: 'Failed to communicate with Face Service' });
+      res.status(500).json({ error: 'Failed to communicate with Face Service', detail: error.message });
     }
   }
 });
@@ -115,23 +142,21 @@ router.post('/verify', verifyToken, upload.single('image'), async (req: AuthRequ
       return res.status(400).json({ error: 'Voter has no face enrolled' });
     }
 
-    const formData = new FormData();
-    formData.append('file', req.file.buffer, req.file.originalname);
-    formData.append('stored_embedding', JSON.stringify(voter.faceEmbedding));
-
-    const faceResponse = await axios.post(`${FACE_SERVICE_URL}/verify`, formData, {
-      headers: { ...formData.getHeaders() },
-      timeout: 45000
+    const data = await callFaceEndpointWithRetry('/verify', () => {
+      const formData = new FormData();
+      formData.append('file', req.file!.buffer, req.file!.originalname);
+      formData.append('stored_embedding', JSON.stringify(voter.faceEmbedding));
+      return formData;
     });
 
-    if (faceResponse.data.verified) {
+    if (data.verified) {
       // Audit log
       await prisma.auditLog.create({
         data: {
           actorType: 'voter',
           actorId: req.user.id,
           action: 'face_verified',
-          details: { distance: faceResponse.data.distance }
+          details: { distance: data.distance }
         }
       });
       res.json({ verified: true, message: 'Identity verified' });
@@ -140,6 +165,11 @@ router.post('/verify', verifyToken, upload.single('image'), async (req: AuthRequ
     }
   } catch (error: any) {
     console.error(`[Face Verify Error] Target: ${FACE_SERVICE_URL} - Error:`, error.message);
+    if (error.response?.status === 429) {
+      return res.status(429).json({
+        error: 'Face recognition service is currently handling high traffic. Please wait a few seconds and try again.'
+      });
+    }
     if (error.response && error.response.data && error.response.data.detail) {
       res.status(400).json({ error: error.response.data.detail });
     } else {
